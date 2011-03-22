@@ -1,0 +1,598 @@
+#!/bin/sh -x
+# init script for booting A5IT from multiple root filesystems
+# BuBU, September 2010 (important changes :))
+# Thomas B. Ruecker, March 2010
+# based on work by Kevin Boone, January 2010 and
+# original Archos init script, used by permission.
+# License GPL
+
+# enable g_serial or not
+ALLOW_G_SERIAL=0
+
+ALWAYS_ENABLE_G_SERIAL=0
+
+# enable ttyS2/ttyGS1 shell
+ENABLE_SERIAL_SHELL=0
+
+DATA_PARTITION_DEV=/dev/sda1
+SYSTEM_PARTITION_DEV=/dev/sda2
+NAND_SYSTEM_DEV=ubi0:system
+NAND_DATA_DEV=ubi1:data
+
+SYSTEM_PARTITION_PATH="/mnt/system"
+DATA_PARTITION_PATH="/mnt/data"
+NAND_SYSTEM_PATH="/mnt/nand_system"
+NAND_DATA_PATH="/mnt/nand_data"
+
+BOOT_IMAGE="/boot-image"
+
+MENUFILE_DEVICE=/dev/sda1
+MENUFILE_PATH=/menu.lst
+ROOTFS_FOLDER=""
+ROOTFSIMAGESOURCE_MOUNTPOINT=""
+ROOTFSIMAGESOURCE_PIVOT_MOUNTPOINT=/data  # FIXME
+
+DEFAULT_ROOTFS_IMAGE=/rootfs.img
+DEFAULT_ROOTFS_DEVICE=/dev/sda1
+DEFAULT_ROOTFS_INIT=/sbin/init
+
+ROOTFS_DEVICE=$DEFAULT_ROOTFS_DEVICE
+ROOTFS_IMAGE=$DEFAULT_ROOTFS_IMAGE
+ROOTFS_INIT=$DEFAULT_ROOTFS_INIT
+
+#- FLASH_CACHE_PATH="/mnt/fcache"
+NEWROOT_PATH="/new-root"
+
+CAT=/bin/cat
+DD=/bin/dd
+GREP="/bin/grep -q "
+INSMOD=/sbin/insmod
+LOSETUP=/sbin/losetup
+MKDIR=/bin/mkdir
+MOUNT=/bin/mount
+RM=/bin/rm
+SFDISK=/bin/sfdisk
+TOUCH=/bin/touch
+UBIATTACH=/usr/sbin/ubiattach
+UBIDETACH=/usr/sbin/ubidetach
+UMOUNT="/bin/umount -f "
+ZCAT=/bin/zcat
+
+CRAMFS_FILENAME="androidroot.cramfs.secure"
+BITMAPFS_FILENAME="bitmapfs.cramfs.secure"
+
+RECOVERY_ERROR_CODE=101
+
+NAND_EXISTS=0
+
+log()
+{
+	echo $*
+}
+
+log_and_die()
+{
+	sync
+
+	umount_properly_nand_system
+	umount_properly_nand_data
+	umount_properly_data
+	umount_properly_system
+
+	$UMOUNT /sys
+	$UMOUNT /proc
+	exit_status=$1
+	log $*
+	exit $exit_status
+}
+
+log_and_reboot()
+{
+	log $*
+	do_proper_reboot
+}
+
+do_proper_reboot()
+{
+	log "reboot."
+	sync
+
+	umount_properly_nand_system
+	umount_properly_nand_data
+	umount_properly_data
+	umount_properly_system
+
+	/sbin/reboot -f
+	while true; do sleep 1; done
+}
+
+umount_properly_partition()
+{
+	mount_point=$1 # $1 : mount_point to umount
+	umount_count=5
+	while [ $umount_count -gt 0 ]; do
+		$UMOUNT $mount_point > /dev/null 2>&1
+
+		if [  "x`mount | grep $mount_point`" == "x" ] ; then
+			return;
+		fi
+
+		sleep 1
+		let umount_count-=1
+	done
+}
+
+mount_data()
+{
+	mkdir -p $DATA_PARTITION_PATH
+	echo "Mounting data partition:"
+	ls -l /dev/sda*
+	echo "   Trying EXT3..."
+	mount -t ext3 -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
+	mount_result=$?
+	if [ $mount_result -ne 0 ] ; then
+		# Trying vfat instead
+		echo "   Trying VFAT..."
+		mount -t vfat -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
+		mount_result=$?
+	fi	
+	if [ $mount_result -ne 0 ] ; then
+		# Trying to guess the fs
+		echo "   Trying to guess..."
+		mount -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
+		mount_result=$?
+	fi
+	if [ $mount_result -ne 0 ] ; then
+		log_and_die 1 "Unsupported filesystem"
+	fi
+}
+
+mount_rootfs_source()
+{
+	mkdir -p $DATA_PARTITION_PATH
+	echo "Mounting data partition:"
+	echo "   Trying EXT3..."
+	mount -t ext3 -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
+	mount_result=$?
+	if [ $mount_result -ne 0 ] ; then
+		# Trying vfat instead
+		echo "   Trying VFAT..."
+		mount -t vfat -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
+		mount_result=$?
+	fi	
+	if [ $mount_result -ne 0 ] ; then
+		# Trying to guess the fs
+		echo "   Trying to guess..."
+		mount -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
+		mount_result=$?
+	fi
+	if [ $mount_result -ne 0 ] ; then
+		log_and_die 1 "Unsupported filesystem"
+	fi
+}
+
+umount_properly_data()
+{
+	umount_properly_partition $DATA_PARTITION_PATH
+}
+
+mount_system()
+{
+	$MOUNT -t ext3 -o rw,noatime $SYSTEM_PARTITION_DEV $SYSTEM_PARTITION_PATH 
+}
+
+umount_properly_system()
+{
+	umount_properly_partition $SYSTEM_PARTITION_PATH
+}
+
+mount_nand_system()
+{
+	$MOUNT -t ubifs -o rw $NAND_SYSTEM_DEV $NAND_SYSTEM_PATH 
+}
+
+umount_properly_nand_system()
+{
+	umount_properly_partition $NAND_SYSTEM_PATH 
+}
+
+mount_nand_data()
+{
+	$MOUNT -t ubifs -o rw $NAND_DATA_DEV $NAND_DATA_PATH 
+}
+
+umount_properly_nand_data()
+{
+	umount_properly_partition $NAND_DATA_PATH
+}
+
+install_usbhdd()
+{
+	ls /sys/devices/platform/
+	ls /sys/devices/platform/usbhdd/
+	cat /sys/devices/platform/usbhdd/hddvcc
+	if [ -e /sys/devices/platform/usbhdd/hddvcc ] ; then
+		echo 1 > /sys/devices/platform/usbhdd/hddvcc
+		sleep 1
+		sleep 5
+	else
+		log "no hddvcc sysfs ?"
+	fi
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/host/ehci-hcd.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/storage/usb-storage.ko delay_use=0
+}
+
+install_sata()
+{
+	if [ -e /sys/devices/platform/usb2sata/satavcc ] ; then
+		echo 1 > /sys/devices/platform/usb2sata/satavcc
+		sleep 1
+	else
+		log "no satavcc sysfs ?"
+	fi
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/host/ehci-hcd.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/storage/usb-storage.ko delay_use=0
+}
+
+install_ceata()
+{
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/ata/libata.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/ata/ceata_archosg6.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/storage/usb-storage.ko delay_use=0
+}
+
+dev_setup()
+{
+	cat /proc/partitions
+	echo -n "Creating device nodes: "
+	cat /proc/partitions | grep 'sda.' | while read major minor blocks dev
+	do
+		if [ ! -e /dev/$dev ]; then
+			echo -n "$dev "
+			mknod /dev/$dev b $major $minor
+		fi
+	done
+	for i in 0 1 2 ; do
+		if [ ! -e /dev/loop${i} ]; then
+			echo -n "loop${i} "
+			mknod /dev/loop${i} b 7 ${i}
+		fi
+	done
+	echo
+}
+
+install_usbhsdpa()
+{
+	echo 0 > /sys/devices/system/hsdpa/hsdpa0/powergpio
+	echo 1 > /sys/devices/system/hsdpa/hsdpa0/resetcycle
+}
+
+install_mtd()
+{
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/mtd.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/mtd_blkdevs.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/mtdchar.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/mtdblock.ko
+}
+
+install_nand()
+{
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/nand/nand_ecc.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/nand/nand_ids.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/nand/nand.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/nand/omap2.ko
+}
+
+install_ubi()
+{
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/mtd/ubi/ubi.ko mtd=system,2048 mtd=data,2048
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/lib/crc16.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/lib/lzo/lzo_decompress.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/lib/lzo/lzo_compress.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/crypto/lzo.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/lib/zlib_deflate/zlib_deflate.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/crypto/deflate.ko
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/fs/ubifs/ubifs.ko
+}
+
+install_mass_storage()
+{
+	if [ "$PRODUCT_NAME" = "A5S" ] || \
+	   [ "$PRODUCT_NAME" = "A5SG" ] || \
+	   [ "$PRODUCT_NAME" = "A5GCAM" ] || \
+	   [ "$PRODUCT_NAME" = "A5SC" ] || \
+	   [ "$PRODUCT_NAME" = "A5ST" ] || \
+	   [ "$PRODUCT_NAME" = "A5SGW" ]; then
+		log "start the $PRODUCT_NAME USB HARD DRIVE..."
+		install_usbhdd
+	elif [ "$PRODUCT_NAME" = "G6S" ] ; then
+		if [ -e /sys/devices/platform/usbhdd/hddvcc ] || [ -e /sys/devices/system/usbhdd/usbhdd0/hddvcc ] ; then
+			log "start the $PRODUCT_NAME USB HARD DRIVE..."
+			install_usbhdd
+		else
+			log "start the $PRODUCT_NAME CEATA HARD DRIVE..."
+			install_ceata
+		fi
+#- 	elif [ "$PRODUCT_NAME" = "A5S" ] ; then
+#- 		log "start the $PRODUCT_NAME USB HARD DRIVE..."
+#- 		install_usbhdd
+	elif [ "$PRODUCT_NAME" = "G6H" ] || [ "$PRODUCT_NAME" = "G6L" ] || [ "$PRODUCT_NAME" = "A5H" ]; then
+		log "start the $PRODUCT_NAME SATA HARD DRIVE..."
+		install_sata
+	elif [ "$PRODUCT_NAME" = "G6PLUS" ] ; then
+		log "start the $PRODUCT_NAME USB HSDPA..."
+		install_usbhsdpa
+		log "start the $PRODUCT_NAME USB HARD DRIVE..."
+		install_usbhdd
+	else
+		log "start the $PRODUCT_NAME SATA HARD DRIVE..."
+		install_sata
+	fi
+
+	WAIT_COUNTER=15
+	while [  $WAIT_COUNTER -gt 0 ] ; do
+		if [ -d /sys/class/scsi_device/0\:0\:0\:0 ] ; then
+			break
+		fi
+		sleep 1
+		let WAIT_COUNTER-=1
+	done
+
+	if [ $WAIT_COUNTER -eq 0 ] ; then
+		echo
+		#do_proper_reboot
+	else
+		log "HD ready"
+		echo 120 > /proc/hdpwrd/sda/timeout
+	fi
+
+}
+
+install_nand_storage()
+{
+#	if [ -d "/sys/devices/platform/omap2-nand" ]; then
+		install_mtd
+		install_nand
+
+		install_ubi
+
+		let NAND_EXISTS=1
+#	fi
+}
+
+display_banner()
+{
+	# Show a nice boot image
+	gunzip -c $BOOT_IMAGE > /dev/fb0
+}
+
+do_menu()
+{
+	MENUFILE=$DATA_PARTITION_PATH$MENUFILE_PATH
+
+        if [ -f $MENUFILE ]; then
+		dos2unix $MENUFILE
+        fi
+
+	if [ ! -f $MENUFILE ]; then
+		if [ -e $CRAMFS_FULL_PATH ]; then
+			echo "Archos|ANDROID|/androidroot.cramfs.secure|/init|0" > $MENUFILE
+			echo "Froyo|/dev/sda1|/froyo.img|/init|0" >> $MENUFILE
+			echo "openAOS_Angstrom|/dev/sda1|/rootfs.img|/sbin/init|1" >> $MENUFILE
+		else
+			echo "Froyo|/dev/sda1|/froyo.img|/init|0" >> $MENUFILE
+			echo "openAOS_Angstrom|/dev/sda1|/rootfs.img|/sbin/init|1" >> $MENUFILE
+		fi
+	else
+		if [ -e $CRAMFS_FULL_PATH ]; then
+			grep -q "|ANDROID|" $MENUFILE >/dev/null 2>&1
+
+			if [ $? -ne 0 ]; then
+				echo "Archos|ANDROID|/androidroot.cramfs.secure|/init" >> $MENUFILE
+			fi
+		else
+			grep -q "|ANDROID|" $MENUFILE >/dev/null 2>&1
+
+			if [ $? -eq 0 ]; then
+				grep -v "|ANDROID|" $MENUFILE >$MENUFILE.tmp
+				mv -f $MENUFILE.tmp $MENUFILE
+			fi
+		fi
+	fi
+
+	if [ -f $MENUFILE ] ; then
+		$CAT $MENUFILE | while read line; do
+			IMAGE_SEL=`echo $line|cut -f 1 -d \|`
+			echo "\"$IMAGE_SEL\" " >> /tmp/$$
+		done
+
+		IMAGE_SELS=`$CAT /tmp/$$`;
+
+		#echo "8" > /sys/devices/system/display/gfxformat
+
+		SELECTED=`eval fbmenu "Boot\ menu" "Select\ operating\ system\ to\ boot" 0 20 $IMAGE_SELS`
+
+		# NOTE: We are using the item's display name as a key. 
+		# User must put unique names in menu.lst!
+		if [ -n "$SELECTED" ]; then
+			ROOTFS_DEVICE=`grep "$SELECTED" $MENUFILE|cut -f 2 -d \|`
+			ROOTFS_IMAGE=`grep "$SELECTED" $MENUFILE|cut -f 3 -d \|`
+			ROOTFS_INIT=`grep "$SELECTED" $MENUFILE|cut -f 4 -d \|`
+			ROOTFS_UPFBMODE=`grep "$SELECTED" $MENUFILE|cut -f 5 -d \|`
+		else
+			echo fbmenu did not return a value -- using defaults
+		fi
+
+		rm -f /tmp/$$
+	else
+		echo No menu file -- using defaults
+	fi
+
+	if [ $ROOTFS_IMAGE == "ANDROID" ]; then
+		ROOTFS_INIT = "/init"
+	fi
+
+	IS_ANDROID=$(echo $SELECTED|grep -i ANDROID)
+	IS_FROYO=$(echo $SELECTED|grep -i FROYO)
+
+        if [ "x$IS_ANDROID" != "x" -o "x$IS_FROYO" != "x" ]; then
+		ROOTFS_UPFBMODE=0
+	fi
+
+	if [ "x$ROOTFS_UPFBMODE" = "x" -o "x$ROOTFS_UPFBMODE" != "x0"]; then
+		ROOTFS_UPFBMODE=1
+	fi
+
+	echo ROOTFS_DEVICE is $ROOTFS_DEVICE;
+	echo ROOTFS_IMAGE is $ROOTFS_IMAGE;
+	echo ROOTFS_INIT is $ROOTFS_INIT; # FIXME
+	echo ROOTFS_UPFBMODE is $ROOTFS_UPFBMODE;
+}
+
+kill_cmd()
+{
+	for p in $(pidof $*)
+		do
+			if [ "x$p" != "x$$" ]; then
+				kill -9 $p
+			fi
+		done
+}
+
+run_serial_shell()
+{
+        /bin/sh </dev/$1 >/dev/$1 &
+}
+
+kill_serial_shell()
+{
+	kill_cmd sh
+}
+
+kernel_debug_on_serial()
+{
+	cat /proc/kmsg >/dev/$1 &
+}
+
+load_musb()
+{
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/musb/musb_hdrc.ko use_dma=1 debug=1
+}
+
+install_g_serial()
+{
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/gadget/g_serial.ko n_ports=3
+
+#	kernel_debug_on_serial ttyGS2
+
+	if [ $ENABLE_SERIAL_SHELL -eq 1 ]; then
+		run_serial_shell ttyGS1
+	fi
+}
+
+reset_all_tty()
+{
+   for t in ttyGS0 ttyGS1 ttyGS2 ttyS2
+      do
+         stty -F /dev/$t echo
+      done
+}
+
+# Prepare filesystem
+$MOUNT -t proc proc /proc
+$MOUNT -t sysfs sysfs /sys
+
+export PS1='\[\033[01;31m\]openAOS-init\[\033[01;30m\] - \[\033[01;34m\]\w>\[\033[00m\] '
+
+# if [ $ENABLE_SERIAL_SHELL -eq 1 ]; then
+#	run_serial_shell ttyS2
+# fi
+
+# Get board and product information
+PRODUCT_NAME=`$CAT /proc/cpuinfo | grep "Hardware" | cut -d ' ' -f 3`
+KERNEL_VERSION=$($CAT /proc/version | cut -d ' ' -f 3)
+
+log "PRODUCT $PRODUCT_NAME, KERNEL VERSION $KERNEL_VERSION"
+
+if [ "$KERNEL_VERSION" = "2.6.22.1-omap1" ]; then
+	echo "8" > /sys/devices/system/display/gfxformat
+fi
+
+# banner display
+display_banner
+
+if [ $ALWAYS_ENABLE_G_SERIAL -eq 1 ]; then
+	load_musb
+	# loading g_serial
+	install_g_serial
+elif [ $ALLOW_G_SERIAL -eq 1 ]; then
+	USB_PLUGGED=$(cat /sys/devices/platform/battery/usb_online)
+
+        if [ $USB_PLUGGED -eq 1 ]; then
+		SELECTED=`eval fbmenu "Gadget\ Serial\ Debugging" "Activate\ Serial\ Debugging" 0 15 "NO" "YES"`
+
+		if [ "x$SELECTED" = "xYES" ]; then
+			load_musb
+			# loading g_serial
+			install_g_serial
+		fi
+
+		display_banner
+	fi
+fi
+
+load_musb
+$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/gadget/g_cdc.ko
+
+# check & load nand stuff
+#install_nand_storage
+
+# check for mass storage
+install_mass_storage
+
+# create /dev/sd* and /dev/loop*
+dev_setup
+
+# mount /dev/sda1 as data part to get some usefull infos
+mount_data
+
+SYSTEM_MOUNTED=0
+
+RESET_FB_MODE=0
+
+	echo Booting rootfs
+
+#	/sbin/insmod /lib/modules/2.6.35.3+/kernel/lib/zlib_deflate/zlib_deflate.ko
+#	/sbin/insmod /lib/modules/2.6.35.3+/kernel/fs/btrfs/btrfs.ko
+#	mount -o loop,noatime /mnt/data/meego.raw $NEWROOT_PATH
+#	mount -o loop,noatime /mnt/data/os.img $NEWROOT_PATH
+
+#	mount --bind /mnt/data/meego_root $NEWROOT_PATH
+	mount --bind /mnt/data/ubuntu_root $NEWROOT_PATH
+
+	mkdir -p $NEWROOT_PATH/mnt_data
+	mount --move /mnt/data $NEWROOT_PATH/mnt_data
+
+
+export SYSTEM_PARTITION_PATH
+
+init=/sbin/init
+
+if [ $ENABLE_SERIAL_SHELL -eq 1 ]; then
+	# kill the init shell binded to ttyGS1/ttyS2
+	kill_serial_shell
+fi
+
+# reset_all_tty
+#if [ $RESET_FB_MODE -eq 1 ]; then
+#	dd if=/dev/zero of=/dev/fb0 bs=2048
+#	/sbin/fbset -nonstd 0 -depth 24
+#fi
+
+$UMOUNT /sys
+$UMOUNT /proc
+
+log "SWITCHING TO REAL ROOT"
+exec switch_root $NEWROOT_PATH $init "$@"
+
+

@@ -1,0 +1,6 @@
+#!/bin/bash -x
+
+cd ir/
+#find . | cpio -H newc -vo | gzip -n > ../initramfs.cpio.gz
+find . | cpio -H newc -vo | lzma > ../initramfs.cpio.gz
+

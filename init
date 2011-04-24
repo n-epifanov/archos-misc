@@ -1,4 +1,4 @@
-#!/bin/sh -x
+#!/bin/sh
 # init script for booting A5IT from multiple root filesystems
 # BuBU, September 2010 (important changes :))
 # Thomas B. Ruecker, March 2010
@@ -12,7 +12,9 @@ ALLOW_G_SERIAL=0
 ALWAYS_ENABLE_G_SERIAL=0
 
 # enable ttyS2/ttyGS1 shell
-ENABLE_SERIAL_SHELL=0
+ENABLE_SERIAL_SHELL=1
+
+ENABLE_G_COMPOSITE=1
 
 DATA_PARTITION_DEV=/dev/sda1
 SYSTEM_PARTITION_DEV=/dev/sda2
@@ -64,6 +66,8 @@ BITMAPFS_FILENAME="bitmapfs.cramfs.secure"
 RECOVERY_ERROR_CODE=101
 
 NAND_EXISTS=0
+
+set -x
 
 log()
 {
@@ -126,7 +130,6 @@ mount_data()
 {
 	mkdir -p $DATA_PARTITION_PATH
 	echo "Mounting data partition:"
-	ls -l /dev/sda*
 	echo "   Trying EXT3..."
 	mount -t ext3 -o rw,noatime /dev/sda1 $DATA_PARTITION_PATH > /dev/null 2>&1
 	mount_result=$?
@@ -208,13 +211,9 @@ umount_properly_nand_data()
 
 install_usbhdd()
 {
-	ls /sys/devices/platform/
-	ls /sys/devices/platform/usbhdd/
-	cat /sys/devices/platform/usbhdd/hddvcc
 	if [ -e /sys/devices/platform/usbhdd/hddvcc ] ; then
 		echo 1 > /sys/devices/platform/usbhdd/hddvcc
 		sleep 1
-		sleep 5
 	else
 		log "no hddvcc sysfs ?"
 	fi
@@ -243,10 +242,10 @@ install_ceata()
 
 dev_setup()
 {
-	cat /proc/partitions
 	echo -n "Creating device nodes: "
-	cat /proc/partitions | grep 'sda.' | while read major minor blocks dev
+	grep 'sda.' /proc/partitions | while read major minor start blocks dev
 	do
+		if [ -z "$dev" ]; then dev=$blocks; blocks=$start; fi
 		if [ ! -e /dev/$dev ]; then
 			echo -n "$dev "
 			mknod /dev/$dev b $major $minor
@@ -331,7 +330,7 @@ install_mass_storage()
 
 	WAIT_COUNTER=15
 	while [  $WAIT_COUNTER -gt 0 ] ; do
-		if [ -d /sys/class/scsi_device/0\:0\:0\:0 ] ; then
+		if [ -n "`grep sda1 /proc/partitions`" ] ; then
 			break
 		fi
 		sleep 1
@@ -339,8 +338,7 @@ install_mass_storage()
 	done
 
 	if [ $WAIT_COUNTER -eq 0 ] ; then
-		echo
-		#do_proper_reboot
+		do_proper_reboot
 	else
 		log "HD ready"
 		echo 120 > /proc/hdpwrd/sda/timeout
@@ -350,14 +348,14 @@ install_mass_storage()
 
 install_nand_storage()
 {
-#	if [ -d "/sys/devices/platform/omap2-nand" ]; then
+	if [ -d "/sys/devices/platform/omap2-nand" -o -d "/sys/devices/platform/omap2-nand.0" ]; then
 		install_mtd
 		install_nand
 
 		install_ubi
 
 		let NAND_EXISTS=1
-#	fi
+	fi
 }
 
 display_banner()
@@ -439,7 +437,7 @@ do_menu()
 		ROOTFS_UPFBMODE=0
 	fi
 
-	if [ "x$ROOTFS_UPFBMODE" = "x" -o "x$ROOTFS_UPFBMODE" != "x0"]; then
+	if [ "x$ROOTFS_UPFBMODE" = "x" -o "x$ROOTFS_UPFBMODE" != "x0" ]; then
 		ROOTFS_UPFBMODE=1
 	fi
 
@@ -476,14 +474,16 @@ kernel_debug_on_serial()
 
 load_musb()
 {
-	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/musb/musb_hdrc.ko use_dma=1 debug=1
+	mode="mode_default=2"
+	[ "$KERNEL_VERSION" == "2.6.37.2+" ] && mode=
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/musb/musb_hdrc.ko $mode use_dma=1
 }
 
 install_g_serial()
 {
 	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/gadget/g_serial.ko n_ports=3
 
-#	kernel_debug_on_serial ttyGS2
+	kernel_debug_on_serial ttyGS2
 
 	if [ $ENABLE_SERIAL_SHELL -eq 1 ]; then
 		run_serial_shell ttyGS1
@@ -541,11 +541,13 @@ elif [ $ALLOW_G_SERIAL -eq 1 ]; then
 	fi
 fi
 
-load_musb
-$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/gadget/g_cdc.ko
+if [ $ENABLE_G_COMPOSITE -eq 1 ]; then
+	load_musb
+	$INSMOD /lib/modules/$KERNEL_VERSION/kernel/drivers/usb/gadget/g_cdc.ko
+fi
 
 # check & load nand stuff
-#install_nand_storage
+install_nand_storage
 
 # check for mass storage
 install_mass_storage
@@ -556,43 +558,195 @@ dev_setup
 # mount /dev/sda1 as data part to get some usefull infos
 mount_data
 
+
+#/mnt/data/busybox ifconfig -a
+#/mnt/data/busybox ifconfig usb0 down
+#/mnt/data/busybox ifconfig usb0 192.168.10.2 up
+#/mnt/data/busybox tftp -l zImage -r zImage -g 192.168.10.1
+#md5sum zImage
+
+
 SYSTEM_MOUNTED=0
+
+if [ $NAND_EXISTS -eq 1 ] ; then 
+	CRAMFS_FULL_PATH=$NAND_SYSTEM_PATH/$CRAMFS_FILENAME
+	BITMAPFS_FULL_PATH=$NAND_SYSTEM_PATH/$BITMAPFS_FILENAME
+	mount_nand_system
+
+	if [ $? -eq 0 ]; then
+		SYSTEM_MOUNTED=1
+	fi
+else
+	CRAMFS_FULL_PATH=$SYSTEM_PATH/$CRAMFS_FILENAME
+	BITMAPFS_FULL_PATH=$SYSTEM_PATH/$BITMAPFS_FILENAME
+	mount_system
+
+	if [ $? -eq 0 ]; then
+		SYSTEM_MOUNTED=1
+	fi
+fi
+
+# updating from openaos dir
+# first with cramfs
+
+if [ $SYSTEM_MOUNTED -eq 1 ]; then
+	if [ -e $DATA_PARTITION_PATH/openaos/update/cramfs/$CRAMFS_FILENAME ]; then
+		rm -f $CRAMFS_FULL_PATH
+		cp $DATA_PARTITION_PATH/openaos/update/cramfs/$CRAMFS_FILENAME $CRAMFS_FULL_PATH
+	fi
+
+	if [ -e $DATA_PARTITION_PATH/openaos/update/cramfs/$BITMAPFS_FILENAME ]; then
+		rm -f $BITMAPFS_FULL_PATH
+		cp $DATA_PARTITION_PATH/openaos/update/cramfs/$BITMAPFS_FILENAME $BITMAPFS_FULL_PATH
+	fi
+fi
+
+# then with system files
+if [ -d $DATA_PARTITION_PATH/openaos/update/system ]; then
+	if [ $NAND_EXISTS -eq 1 ] ; then 
+		mount_system
+	fi
+
+	cp -af $DATA_PARTITION_PATH/openaos/update/system/* $SYSTEM_PARTITION_PATH/
+
+	if [ $NAND_EXISTS -eq 1 ] ; then 
+		umount_properly_system
+	fi
+fi
+
+rm -rf $DATA_PARTITION_PATH/openaos/update
+
+# start the menu and find out what to boot
+do_menu
+
+display_banner
+
+if [ $ROOTFS_DEVICE != "ANDROID" -a $SYSTEM_MOUNTED -eq 1 ]; then
+	if [ $NAND_EXISTS -eq 1 ] ; then 
+		umount_properly_nand_system
+	else
+		umount_properly_system
+	fi
+fi
 
 RESET_FB_MODE=0
 
-	echo Booting rootfs
+case "$ROOTFS_DEVICE" in
+   ANDROID) 
+	ROOTFS_INIT=/init
 
-#	/sbin/insmod /lib/modules/2.6.35.3+/kernel/lib/zlib_deflate/zlib_deflate.ko
-#	/sbin/insmod /lib/modules/2.6.35.3+/kernel/fs/btrfs/btrfs.ko
-#	mount -o loop,noatime /mnt/data/meego.raw $NEWROOT_PATH
-#	mount -o loop,noatime /mnt/data/os.img $NEWROOT_PATH
+	# Check for correct partition table
+	if [ ! -b $SYSTEM_PARTITION ] || [ ! -b $DATA_PARTITION ] ; then
+		log_and_reboot "HDD partition scheme is wrong! Can't boot Android!"
+	fi
 
-#	mount --bind /mnt/data/meego_root $NEWROOT_PATH
-	mount --bind /mnt/data/ubuntu_root $NEWROOT_PATH
+	if [ $NAND_EXISTS -eq 1 ] ; then 
+		if [ $SYSTEM_MOUNTED -ne 1 ]; then
+			log_and_die 102 "Mounting NAND system partition failed"
+		fi
+	else
+		if [ $SYSTEM_MOUNTED -ne 1 ]; then
+			log_and_die 102 "Mounting system partition failed"
+		fi
+	fi
 
+	if [ $NAND_EXISTS -eq 1 ] ; then 
+		mount_nand_data || log_and_die 107 "Mounting NAND data partition failed"
+	fi
+
+	$LOSETUP -o 256 /dev/loop0 $CRAMFS_FULL_PATH || log_and_die 103 "Mounting system partition failed"
+	$MOUNT -t cramfs /dev/loop0 $NEWROOT_PATH || log_and_die 103 "Mounting system partition failed"
+   ;; # ANDROID
+
+   AVOS)
+	ROOTFS_INIT=/sbin/init
+
+	mkdir -p $SYSTEM_PARTITION_PATH
+
+	$MOUNT -t ext3 -o rw $SYSTEM_PARTITION_DEV $SYSTEM_PARTITION_PATH
+
+	$DD if=$SYSTEM_PARTITION_PATH/$CRAMFS_FILENAME of=/dev/ram0 bs=256 skip=1
+
+	$MOUNT -t cramfs /dev/ram0 $NEWROOT_PATH
+
+	export SYSTEM_PARTITION_PATH
+
+	$UMOUNT $SYSTEM_PARTITION_PATH
+   ;; # AVOS
+
+   *)
+	# We have a selected image and device now
+	echo Booting rootfs $ROOTFS_IMAGE from $ROOTFS_DEVICE
+
+	if [ $DATA_PARTITION_DEV != $ROOTFS_DEVICE ]; then
+		mount_rootfs_source
+	else
+		ROOTFSIMAGESOURCE_MOUNTPOINT=$DATA_PARTITION_PATH
+	fi
+
+	rimg="$ROOTFSIMAGESOURCE_MOUNTPOINT/$ROOTFS_FOLDER/$ROOTFS_IMAGE"
+	if [ -f "$rimg.gz" ]; then
+		if [ -f "$rimg" ]; then
+			mv "$rimg" "$rimg.bak"
+		fi
+		gunzip -d "$rimg.gz"
+	fi
+	if [ ! -f "$rimg" -a ! -d "$rimg" ]; then
+	  log_and_die 1 "Selected rootfs not found"
+	fi
+
+	mopts=
+	[ -f "$rimg" ] && mopts="-o loop,noatime"
+	[ -d "$rimg" ] && mopts="--bind"
+	mount $mopts $rimg $NEWROOT_PATH
+
+	if [ $DATA_PARTITION_DEV != $ROOTFS_DEVICE ]; then
+		mkdir -p $NEWROOT_PATH/$ROOTFSIMAGESOURCE_PIVOT_MOUNTPOINT
+		mount --move $ROOTFSIMAGESOURCE_MOUNTPOINT $NEWROOT_PATH/$ROOTFSIMAGESOURCE_PIVOT_MOUNTPOINT
+	fi
+
+# FIXME introduce variable
 	mkdir -p $NEWROOT_PATH/mnt_data
-	mount --move /mnt/data $NEWROOT_PATH/mnt_data
+	mount --move $DATA_PARTITION_PATH $NEWROOT_PATH/mnt_data
 
+	if [ "x$ROOTFS_UPFBMODE" != "x0" ]; then
+		RESET_FB_MODE=1
+	fi
+
+   ;; # OTHERS
+esac
+
+# data not needed anymore
+umount_properly_nand_data
+
+if [ $ROOTFS_DEVICE == "AVOS" -o $ROOTFS_DEVICE == "ANDROID" -o $DATA_PARTITION_DEV != $ROOTFS_DEVICE ]; then
+	umount_properly_data
+fi
 
 export SYSTEM_PARTITION_PATH
 
-init=/sbin/init
+init=$ROOTFS_INIT
+
+if [ $NAND_EXISTS -eq 1 ]; then
+	umount_properly_system
+else
+	$MOUNT --move $SYSTEM_PARTITION_PATH $NEWROOT_PATH/$SYSTEM_PARTITION_PATH
+fi
 
 if [ $ENABLE_SERIAL_SHELL -eq 1 ]; then
 	# kill the init shell binded to ttyGS1/ttyS2
 	kill_serial_shell
+#	kernel_debug_on_serial ttyS2 # no more needed
 fi
 
 # reset_all_tty
-#if [ $RESET_FB_MODE -eq 1 ]; then
-#	dd if=/dev/zero of=/dev/fb0 bs=2048
-#	/sbin/fbset -nonstd 0 -depth 24
-#fi
+if [ $RESET_FB_MODE -eq 1 ]; then
+	dd if=/dev/zero of=/dev/fb0 bs=2048
+	/sbin/fbset -nonstd 0 -depth 24
+fi
 
 $UMOUNT /sys
 $UMOUNT /proc
 
 log "SWITCHING TO REAL ROOT"
 exec switch_root $NEWROOT_PATH $init "$@"
-
-

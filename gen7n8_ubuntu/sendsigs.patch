@@ -1,0 +1,33 @@
+# Ensure all stopping upstart jobs are indeed stopped before shutdown
+# https://bugs.launchpad.net/ubuntu/+source/mountall/+bug/616287
+--- /a/init.d/sendsigs	2010-09-06 18:44:01.000000000 +0200
++++ /b/init.d/sendsigs	2011-04-26 15:45:24.000000000 +0200
+@@ -21,6 +21,10 @@ report_unkillable() {
+ 	/usr/share/apport/unkillable_shutdown $OMITPIDS
+ }
+ 
++upstart_jobs () {
++	initctl list | grep start/ | sed -n -e "/process [0-9]/s/.*process //p"
++}
++
+ do_stop () {
+ 	OMITPIDS=
+ 
+@@ -51,7 +55,7 @@ do_stop () {
+ 	# Upstart jobs have their own "stop on" clauses that sends
+ 	# SIGTERM/SIGKILL just like this, so if they're still running,
+ 	# they're supposed to be
+-	for pid in $(initctl list | sed -n -e "/process [0-9]/s/.*process //p"); do
++	for pid in $(upstart_jobs); do
+ 		OMITPIDS="${OMITPIDS:+$OMITPIDS }-o $pid"
+ 	done
+ 
+@@ -78,7 +82,7 @@ do_stop () {
+ 		# again on each loop and add any new jobs (e.g., plymouth) to
+ 		# the list.  If we did miss one starting up, this beats waiting
+ 		# 10 seconds before shutting down.
+-		for pid in $(initctl list | sed -n -e "/process [0-9]/s/.*process //p"); do
++		for pid in $(upstart_jobs); do
+ 			OMITPIDS="${OMITPIDS:+$OMITPIDS }-o $pid"
+ 		done
+ 		

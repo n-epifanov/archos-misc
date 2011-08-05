@@ -1,0 +1,270 @@
+Fix compiling against 37 kernel.
+Fix deadlock: driver was changing clock rate, while holding lock.
+diff -Npur powervr-orig//GFX_Linux_KM/eurasiacon/build/linux/kbuild/Makefile.kbuild_subdir_common powervr-new//GFX_Linux_KM/eurasiacon/build/linux/kbuild/Makefile.kbuild_subdir_common
+--- powervr-orig//GFX_Linux_KM/eurasiacon/build/linux/kbuild/Makefile.kbuild_subdir_common	2011-04-12 11:50:20.000000000 +0400
++++ powervr-new//GFX_Linux_KM/eurasiacon/build/linux/kbuild/Makefile.kbuild_subdir_common	2011-05-13 17:47:32.000000000 +0400
+@@ -30,7 +30,7 @@ $(MODULE)-objs = $(SOURCES:.c=.o)
+ 
+ EXTRA_CFLAGS = $(INCLUDES)  \
+ 				$(ALL_CFLAGS_kbuild)	\
+-				-Wall -fno-strict-aliasing -Werror
++				-Wall -fno-strict-aliasing
+ 
+ ifeq ($(SILENT),@)
+ 	KBUILD_VERBOSE ?= 0
+diff -Npur powervr-orig//GFX_Linux_KM/eurasiacon/build/linux/omap3430_linux/kbuild/build_gfx_kernelmodules powervr-new//GFX_Linux_KM/eurasiacon/build/linux/omap3430_linux/kbuild/build_gfx_kernelmodules
+--- powervr-orig//GFX_Linux_KM/eurasiacon/build/linux/omap3430_linux/kbuild/build_gfx_kernelmodules	2011-04-12 11:50:20.000000000 +0400
++++ powervr-new//GFX_Linux_KM/eurasiacon/build/linux/omap3430_linux/kbuild/build_gfx_kernelmodules	2011-08-05 17:19:25.000000000 +0400
+@@ -4,12 +4,12 @@
+ #HOME=/home/<user>
+ 
+ #set environment variables
+-export DISCIMAGE=/home/prabu/gfx10/
++#export DISCIMAGE=/home/prabu/gfx10/
+ #export KERNELDIR=/home/prabu/AM35x-OMAP35x-PSP-SDK-03.00.00.04/src/kernel/linux-03.00.00.04
++#export KERNELDIR=/home/prabu/linux-omap3
++export KERNELDIR=/download/tmp/archos/kernels_5K33P/port/
+ 
+-export KERNELDIR=/home/prabu/linux-omap3
+-
+-export PATH=$PATH:/opt/cslite/arm-2009q1/bin
++export PATH=$PATH:/download/tmp/toolchains/arm-2010.09/bin/
+ export CROSS_COMPILE=arm-none-linux-gnueabi-
+ 
+ #clean the build
+@@ -19,5 +19,8 @@ make clean
+ #make BUILD=debug
+  
+ #Perform Release Build
+-make
++make ARCH=arm
++
++#cp ../../../../binary_omap3430_linux_release/*.ko /download/tmp/archos/kernels_5K33P/
++
+ 
+diff -Npur powervr-orig//GFX_Linux_KM/services4/3rdparty/dc_omap3430_linux/omaplfb_displayclass.c powervr-new//GFX_Linux_KM/services4/3rdparty/dc_omap3430_linux/omaplfb_displayclass.c
+--- powervr-orig//GFX_Linux_KM/services4/3rdparty/dc_omap3430_linux/omaplfb_displayclass.c	2011-05-13 17:11:48.000000000 +0400
++++ powervr-new//GFX_Linux_KM/services4/3rdparty/dc_omap3430_linux/omaplfb_displayclass.c	2011-05-14 07:18:52.000000000 +0400
+@@ -235,9 +235,9 @@ static OMAP_ERROR UnblankDisplay(OMAPLFB
+ {
+ 	int res;
+ 
+-	console_lock();
++	acquire_console_sem();
+ 	res = fb_blank(psDevInfo->psLINFBInfo, 0);
+-	console_unlock();
++	release_console_sem();
+ #if !defined (CONFIG_OMAP2_DSS)
+ 	/* DSS2 returns error if unblank from a non-suspend state */
+ 	if (res != 0)
+@@ -1113,7 +1113,7 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINF
+ 	OMAP_ERROR eError = OMAP_ERROR_GENERIC;
+ 	unsigned long FBSize;
+ 
+-	console_lock();
++	acquire_console_sem();
+ 
+ 	if (fb_idx < 0 || fb_idx >= num_registered_fb)
+ 	{
+@@ -1253,7 +1253,7 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINF
+ errModPut:
+ 	module_put(psLINFBOwner);
+ errRelSem:
+-	console_unlock();
++	release_console_sem();
+ 	return eError;
+ }
+ 
+@@ -1262,7 +1262,7 @@ static void DeInitDev(OMAPLFB_DEVINFO *p
+ 	struct fb_info *psLINFBInfo = psDevInfo->psLINFBInfo;
+ 	struct module *psLINFBOwner;
+ 
+-	console_lock();
++	acquire_console_sem();
+ 
+ 	psLINFBOwner = psLINFBInfo->fbops->owner;
+ 
+@@ -1273,7 +1273,7 @@ static void DeInitDev(OMAPLFB_DEVINFO *p
+ 
+ 	module_put(psLINFBOwner);
+ 
+-	console_unlock();
++	release_console_sem();
+ }
+ 
+ OMAP_ERROR OMAPLFBInit(void)
+diff -Npur powervr-orig//GFX_Linux_KM/services4/srvkm/env/linux/module.c powervr-new//GFX_Linux_KM/services4/srvkm/env/linux/module.c
+--- powervr-orig//GFX_Linux_KM/services4/srvkm/env/linux/module.c	2011-05-13 17:11:48.000000000 +0400
++++ powervr-new//GFX_Linux_KM/services4/srvkm/env/linux/module.c	2011-05-20 13:43:50.000000000 +0400
+@@ -175,18 +175,6 @@ static LDM_DRV powervr_driver = {
+ LDM_DEV *gpsPVRLDMDev;
+ 
+ #if defined(LDM_PLATFORM)
+-static IMG_VOID PVRSRVDeviceRelease(struct device *device);
+-
+-static struct platform_device powervr_device = {
+-	.name			= DEVNAME,
+-	.id				= -1,
+-	.dev 			= {
+-		.release		= PVRSRVDeviceRelease
+-	}
+-};
+-#endif 
+-
+-#if defined(LDM_PLATFORM)
+ static IMG_INT PVRSRVDriverProbe(LDM_DEV *pDevice)
+ #endif
+ #if defined(LDM_PCI)
+@@ -296,14 +284,6 @@ static IMG_INT PVRSRVDriverResume(LDM_DE
+ #endif
+ 	return 0;
+ }
+-
+-
+-#if defined(LDM_PLATFORM)
+-static IMG_VOID PVRSRVDeviceRelease(struct device *pDevice)
+-{
+-	PVR_DPF((PVR_DBG_WARNING, "PVRSRVDeviceRelease(pDevice=%p)", pDevice));
+-}
+-#endif 
+ #endif 
+ 
+ 
+@@ -462,15 +442,6 @@ static IMG_INT __init PVRCore_Init(IMG_V
+ 
+ 		goto init_failed;
+ 	}
+-
+-	if ((error = platform_device_register(&powervr_device)) != 0)
+-	{
+-		platform_driver_unregister(&powervr_driver);
+-
+-		PVR_DPF((PVR_DBG_ERROR, "PVRCore_Init: unable to register platform device (%d)", error));
+-
+-		goto init_failed;
+-	}
+ #endif 
+ 
+ #if defined(LDM_PCI)
+@@ -560,7 +531,6 @@ sys_deinit:
+ #endif
+ 
+ #if defined (LDM_PLATFORM)
+-	platform_device_unregister(&powervr_device);
+ 	platform_driver_unregister(&powervr_driver);
+ #endif
+ 
+@@ -620,7 +590,6 @@ static IMG_VOID __exit PVRCore_Cleanup(I
+ #endif
+ 
+ #if defined (LDM_PLATFORM)
+-	platform_device_unregister(&powervr_device);
+ 	platform_driver_unregister(&powervr_driver);
+ #endif
+ 
+diff -Npur powervr-orig//GFX_Linux_KM/services4/system/omap3430/sysconfig.c powervr-new//GFX_Linux_KM/services4/system/omap3430/sysconfig.c
+--- powervr-orig//GFX_Linux_KM/services4/system/omap3430/sysconfig.c	2011-04-12 11:50:20.000000000 +0400
++++ powervr-new//GFX_Linux_KM/services4/system/omap3430/sysconfig.c	2011-05-14 12:25:58.000000000 +0400
+@@ -323,6 +323,15 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
+ 		return eError;
+ 	}
+ 	SYS_SPECIFIC_DATA_SET(&gsSysSpecificData, SYS_SPECIFIC_DATA_ENABLE_SYSCLOCKS);
++
++	eError = InitSGXClocks(gpsSysData);
++	if (eError != PVRSRV_OK)
++	{
++		PVR_DPF((PVR_DBG_ERROR,"SysInitialise: Failed to Init SGX clocks (%d)", eError));
++		SysDeinitialise(gpsSysData);
++		gpsSysData = IMG_NULL;
++		return eError;
++	}
+ #if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
+ 	eError = EnableSGXClocks(gpsSysData);
+ 	if (eError != PVRSRV_OK)
+diff -Npur powervr-orig//GFX_Linux_KM/services4/system/omap3430/syslocal.h powervr-new//GFX_Linux_KM/services4/system/omap3430/syslocal.h
+--- powervr-orig//GFX_Linux_KM/services4/system/omap3430/syslocal.h	2011-04-12 11:50:20.000000000 +0400
++++ powervr-new//GFX_Linux_KM/services4/system/omap3430/syslocal.h	2011-05-14 12:30:32.000000000 +0400
+@@ -57,6 +57,7 @@ IMG_CHAR *SysCreateVersionString(IMG_CPU
+ IMG_VOID DisableSystemClocks(SYS_DATA *psSysData);
+ PVRSRV_ERROR EnableSystemClocks(SYS_DATA *psSysData);
+ 
++PVRSRV_ERROR InitSGXClocks(SYS_DATA *psSysData);
+ IMG_VOID DisableSGXClocks(SYS_DATA *psSysData);
+ PVRSRV_ERROR EnableSGXClocks(SYS_DATA *psSysData);
+ 
+diff -Npur powervr-orig//GFX_Linux_KM/services4/system/omap3430/sysutils_linux.c powervr-new//GFX_Linux_KM/services4/system/omap3430/sysutils_linux.c
+--- powervr-orig//GFX_Linux_KM/services4/system/omap3430/sysutils_linux.c	2011-04-12 11:50:20.000000000 +0400
++++ powervr-new//GFX_Linux_KM/services4/system/omap3430/sysutils_linux.c	2011-05-14 12:31:01.000000000 +0400
+@@ -33,7 +33,6 @@
+ 
+ #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,31))
+ #include <linux/semaphore.h>
+-#include <plat/resource.h>
+ #include <plat/omap-pm.h>
+ #else
+ 
+@@ -409,6 +408,43 @@ static IMG_VOID UnRegisterConstraintNoti
+ #endif 
+ #endif 
+ 
++PVRSRV_ERROR InitSGXClocks(SYS_DATA *psSysData)
++{
++#if !defined(NO_HARDWARE)
++	SYS_SPECIFIC_DATA *psSysSpecData = (SYS_SPECIFIC_DATA *) psSysData->pvSysSpecificData;
++	long lNewRate;
++	IMG_INT res;
++
++	PVR_DPF((PVR_DBG_MESSAGE, "InitSGXClocks: Initializing SGX Clocks"));
++
++	lNewRate = clk_round_rate(psSysSpecData->psSGX_FCK, SYS_SGX_CLOCK_SPEED + ONE_MHZ);
++	if (lNewRate <= 0)
++	{
++		PVR_DPF((PVR_DBG_ERROR, "InitSGXClocks: Couldn't round SGX functional clock rate"));
++		return PVRSRV_ERROR_GENERIC;
++	}
++
++	res = clk_set_rate(psSysSpecData->psSGX_FCK, lNewRate);
++	if (res < 0)
++	{
++		PVR_DPF((PVR_DBG_ERROR, "InitSGXClocks: Couldn't set SGX function clock rate (%d)", res));
++		return PVRSRV_ERROR_GENERIC;
++	}
++
++#if defined(DEBUG)
++	{
++		
++		IMG_UINT32 rate = clk_get_rate(psSysSpecData->psSGX_FCK);
++		PVR_DPF((PVR_DBG_MESSAGE, "InitSGXClocks: SGX Functional Clock is %dMhz", HZ_TO_MHZ(rate)));
++	}
++#endif
++
++#else	
++	PVR_UNREFERENCED_PARAMETER(psSysData);
++#endif	
++	return PVRSRV_OK;
++}
++
+ PVRSRV_ERROR EnableSGXClocks(SYS_DATA *psSysData)
+ {
+ #if !defined(NO_HARDWARE)
+@@ -448,20 +484,6 @@ PVRSRV_ERROR EnableSGXClocks(SYS_DATA *p
+ 		return PVRSRV_ERROR_GENERIC;
+ 	}
+ 
+-	lNewRate = clk_round_rate(psSysSpecData->psSGX_FCK, SYS_SGX_CLOCK_SPEED + ONE_MHZ);
+-	if (lNewRate <= 0)
+-	{
+-		PVR_DPF((PVR_DBG_ERROR, "EnableSGXClocks: Couldn't round SGX functional clock rate"));
+-		return PVRSRV_ERROR_GENERIC;
+-	}
+-
+-	res = clk_set_rate(psSysSpecData->psSGX_FCK, lNewRate);
+-	if (res < 0)
+-	{
+-		PVR_DPF((PVR_DBG_ERROR, "EnableSGXClocks: Couldn't set SGX function clock rate (%d)", res));
+-		return PVRSRV_ERROR_GENERIC;
+-	}
+-
+ #if defined(DEBUG)
+ 	{
+ 		

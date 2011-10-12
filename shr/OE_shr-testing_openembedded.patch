@@ -1,0 +1,1189 @@
+diff --git a/conf/machine/archos43.conf b/conf/machine/archos43.conf
+new file mode 100644
+index 0000000..0401614
+--- /dev/null
++++ b/conf/machine/archos43.conf
+@@ -0,0 +1,67 @@
++#@TYPE: Machine
++#@NAME: Archos 43 internet tablet
++#@DESCRIPTION: Machine configuration for the Archos 43
++
++require conf/machine/include/omap3.inc
++ASSUME_PROVIDED += " u-boot x-load "
++KERNEL_IMAGETYPE = "zImage"
++
++
++PREFERRED_PROVIDER_virtual/xserver = "xserver-xorg"
++XSERVER = "xserver-xorg \
++           xf86-input-evdev \
++           xf86-video-fbdev \
++           xf86-input-keyboard \
++           xf86-video-omapfb "
++
++MACHINE_EXTRA_RRECOMMENDS = "watchdog "
++#  kernel-module-g-nokia \
++#  kernel-module-tsl2563 \
++#  kernel-module-smc91x \
++#  kernel-module-leds-lp5523 \
++#  kernel-module-adp1653 \
++#  kernel-module-ad5820 \
++#  kernel-module-et8ek8 \
++#  kernel-module-fmtx-si4713 \
++#  kernel-module-leds-twl4030-vibra \
++#  kernel-module-lis302dl \
++#  kernel-module-nokia-av \
++#  kernel-module-omap-ssi \
++#  kernel-module-omap-wdt \
++#  kernel-module-phonet \
++#  kernel-module-radio-bcm2048 \
++#  kernel-module-rtc-twl4030 \
++#  kernel-module-smia-sensor \
++#  kernel-module-ssi-mcsaab-imp \
++#  kernel-module-tsc2005 \
++#  kernel-module-twl4030-wdt \
++#  kernel-module-wl12xx \
++#  kernel-module-cmt-speech \
++#  kernel-module-gpio-keys \
++#  kernel-module-hci-h4p \
++#  kernel-module-hsi-char \
++#  kernel-module-isp1704-charger \
++#  kernel-module-lis3lv02d-i2c \
++#  kernel-module-mailbox-mach \
++#  kernel-module-rtc-twl \
++#  kernel-module-twl4030-pwrbutton \
++#  kernel-module-wl1251-spi \
++#"
++
++GUI_MACHINE_CLASS = "bigscreen"
++MACHINE_DISPLAY_WIDTH_PIXELS = "480"
++MACHINE_DISPLAY_HEIGHT_PIXELS = "854"
++
++#KERNEL_IMAGETYPE = "uImage"
++
++IMAGE_FSTYPES ?= "tar.gz"
++
++PREFERRED_PROVIDER_virtual/kernel = "linux"
++
++#use this if you are using the nokia initfs
++#ROOTFS_POSTPROCESS_COMMAND += " remove_init_link; "
++
++MACHINE_FEATURES = "kernel26 apm alsa bluetooth usbgadget vfat keyboard"
++
++module_autoload_g_ether = "g_ether"
++
+diff --git a/recipes/base-files/base-files/archos43/fstab b/recipes/base-files/base-files/archos43/fstab
+new file mode 100644
+index 0000000..0b6111d
+--- /dev/null
++++ b/recipes/base-files/base-files/archos43/fstab
+@@ -0,0 +1,13 @@
++
++rootfs               /                    auto       defaults              1  1
++proc                 /proc                proc       defaults              0  0
++devpts               /dev/pts             devpts     mode=0620,gid=5       0  0
++usbfs                /proc/bus/usb        usbfs      defaults              0  0
++tmpfs                /var/volatile        tmpfs      defaults              0  0
++tmpfs                /dev/shm             tmpfs      mode=0777             0  0
++tmpfs                /media/ram           tmpfs      defaults              0  0
++
++/swap.file           swap                 swap       defaults,noatime      0  0
++/dev/mmcblk2p1       /media/mmc2          vfat       nosuid,nodev,shortname=mixed,dmask=0077,utf8=1,showexec  0  0
++
++
+diff --git a/recipes/base-files/base-files_3.0.14.bb b/recipes/base-files/base-files_3.0.14.bb
+index f067aa7..7cfc707 100644
+--- a/recipes/base-files/base-files_3.0.14.bb
++++ b/recipes/base-files/base-files_3.0.14.bb
+@@ -45,7 +45,7 @@ dirs755 = "/bin /boot /dev ${sysconfdir} ${sysconfdir}/default \
+ 	   ${localstatedir}/volatile/run \
+ 	   /mnt /media /media/card /media/cf /media/net /media/ram \
+ 	   /media/union /media/realroot /media/hdd \
+-	   /media/mmc1"
++	   /media/mmc1 /media/mmc2"
+ 
+ dirs755_micro = "/dev /proc /sys ${sysconfdir}"
+ dirs2775_micro = ""
+diff --git a/recipes/e17/e-wm/battery.patch b/recipes/e17/e-wm/battery.patch
+new file mode 100644
+index 0000000..01af334
+--- /dev/null
++++ b/recipes/e17/e-wm/battery.patch
+@@ -0,0 +1,37 @@
++Index: e/src/modules/battery/batget.c
++===================================================================
++--- e/src/modules/battery/batget.c	(revision 56372)
+++++ e/src/modules/battery/batget.c	(working copy)
++@@ -542,14 +542,14 @@
++    sysev->present = int_file_get(buf);
++    if (!sysev->present) return;
++ 
++-   snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/current_avg", sysev->name);
+++   snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_avg", sysev->name);
++    if (ecore_file_exists(buf)) sysev->have_current_avg = 1;
++-   snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/current_now", sysev->name);
+++   snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_now", sysev->name);
++    if (ecore_file_exists(buf)) sysev->have_current_now = 1;
++ 
++    snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_full", sysev->name);
++    if (ecore_file_exists(buf)) sysev->basis = BASIS_VOLTAGE;
++-   snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_full_design", sysev->name);
+++   snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_max_design", sysev->name);
++    if (ecore_file_exists(buf)) sysev->basis = BASIS_VOLTAGE;
++ 
++    snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/energy_full", sysev->name);
++@@ -604,12 +604,12 @@
++         sysev->basis_empty = int_file_get(buf);
++         if (sysev->basis_full < 0)
++           {
++-             snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_full_design", sysev->name);
+++             snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_max_design", sysev->name);
++              sysev->basis_full = int_file_get(buf);
++           }
++         if (sysev->basis_empty < 0)
++           {
++-             snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_empty_design", sysev->name);
+++             snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/voltage_min_design", sysev->name);
++              sysev->basis_empty = int_file_get(buf);
++           }
++      }
+diff --git a/recipes/e17/e-wm_svn.bb b/recipes/e17/e-wm_svn.bb
+index 87deef7..7569fdb 100644
+--- a/recipes/e17/e-wm_svn.bb
++++ b/recipes/e17/e-wm_svn.bb
+@@ -19,6 +19,7 @@ SRC_URI_append_shr = " \
+   file://illume-disable-screensaver.patch \
+   file://wizard-module-skipping.patch \
+   file://illume-flaunch-fix.patch \
++  file://battery.patch \
+ "
+ 
+ EXTRA_OECONF = "\
+diff --git a/recipes/freesmartphone/frameworkd/archos43/frameworkd.conf b/recipes/freesmartphone/frameworkd/archos43/frameworkd.conf
+new file mode 100644
+index 0000000..cd4c4f0
+--- /dev/null
++++ b/recipes/freesmartphone/frameworkd/archos43/frameworkd.conf
+@@ -0,0 +1,49 @@
++[frameworkd]
++version = 1
++log_level = DEBUG
++log_to = syslog
++
++[odeviced.audio]
++# set default alsa scenario
++default_scenario = stereoout
++# set path to alsa scenario files
++scenario_dir = /usr/share/openmoko/scenarios
++
++[odeviced.kernel26]
++# set 1 to disable the module
++disable = 0
++
++[odeviced.idlenotifier]
++# set 1 to disable the module
++disable = 0
++# add input nodes to ignore for idle activity
++ignoreinput = 2,3,4
++
++#[odeviced.input]
++## don't read from accellerometers for GTA02
++#ignoreinput=2,3
++## keys
++#report1 = AUX,key,169,1
++#report2 = POWER,key,116,1
++#report3 = USB,key,356,0
++#report4 = HEADSET,switch,2,0
++
++[odeviced.powercontrol-neo]
++disable = 1
++
++[ogsmd]
++# specify your modemtype here
++modemtype = ti_calypso
++
++[opreferencesd]
++rootdir = ../etc/freesmartphone/opreferences:/etc/freesmartphone/opreferences:/usr/etc/freesmartphone/opreferences
++
++[oeventsd]
++rules_file = ../etc/freesmartphone/oevents/rules.yaml:/etc/freesmartphone/oevents/rules.yaml:/usr/etc/freesmartphone/oevents/rules.yaml
++
++[ousaged]
++disable = 1
++
++[fsousage]
++[fsousage.controller]
++
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default.conf b/recipes/freesmartphone/fso-alsa-data/archos43/default.conf
+new file mode 100644
+index 0000000..b64f70f
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default.conf
+@@ -0,0 +1,21 @@
++[alsa]
++cardname = default
++default = scenario.stereoout
++
++# GSM
++[scenario.voiphandset]
++
++[scenario.gsmspeaker]
++
++[scenario.gsmheadset]
++
++[scenario.gsmhandset]
++
++[scenario.gsmbluetooth]
++
++[scenario.capturehandset]
++
++# PCM
++[scenario.stereoout]
++
++[scenario.headset]
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/capturehandset b/recipes/freesmartphone/fso-alsa-data/archos43/default/capturehandset
+new file mode 100644
+index 0000000..8996833
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/capturehandset
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:255,255
++2:'ADC Capture Volume':2:195,195
++3:'Headphone Playback Volume':2:121,121
++4:'Speaker Playback Volume':2:121,121
++5:'Mono Playback Volume':1:121
++6:'Bypass Playback Volume':2:2,2
++7:'Sidetone Playback Volume':2:2,2
++8:'Voice Playback Volume':2:2,2
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:2
++12:'Mono Sidetone Playback Volume':1:2
++13:'Mono Voice Playback Volume':1:2
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:0
++18:'Treble Volume':1:7
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:2,2
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:23,23
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:1,1
++25:'Capture Filter Select':1:0
++26:'Capture Filter Cut-off':1:0
++27:'Capture Filter Switch':1:1
++28:'ALC Capture Target Volume':1:3
++29:'ALC Capture Max Volume':1:7
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:15
++33:'ALC Capture Decay Time':1:12
++34:'ALC Capture Attack Time':1:2
++35:'ALC Capture NG Threshold':1:0
++36:'ALC Capture NG Type':1:0
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:0
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:3
++49:'Mic1 Capture Volume':1:0
++50:'DAI Mode':1:2
++51:'ADC Data Select':1:0
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:0
++56:'Line Mono Mux':1:0
++57:'Line Right Mux':1:0
++58:'Line Left Mux':1:0
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:1
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:0
++63:'Mic Sidetone Mux':1:0
++64:'Capture Right Mux':1:0
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:1
++67:'Capture Left Mixer':1:1
++68:'Playback Mixer Voice Capture Sw':1:0
++69:'Playback Mixer Left Capture Swi':1:0
++70:'Playback Mixer Right Capture Sw':1:0
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:0
++77:'Mono Mixer Sidetone Playback Sw':1:0
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:0
++82:'Right Mixer Bypass Playback Swi':1:0
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:0
++86:'Left Mixer Bypass Playback Swit':1:0
++87:'DAPM Stereo Out Switch':1:0
++88:'DAPM GSM Line Out Switch':1:1
++89:'DAPM GSM Line In Switch':1:1
++90:'DAPM Headset Mic Switch':1:1
++91:'DAPM Handset Mic Switch':1:1
++92:'DAPM Handset Spk Switch':1:1
++93:'Amp State Switch':1:1
++94:'Amp Spk Switch':1:1
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmbluetooth b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmbluetooth
+new file mode 100644
+index 0000000..27a9b7d
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmbluetooth
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:235,235
++2:'ADC Capture Volume':2:195,195
++3:'Headphone Playback Volume':2:0,0
++4:'Speaker Playback Volume':2:0,0
++5:'Mono Playback Volume':1:79
++6:'Bypass Playback Volume':2:6,6
++7:'Sidetone Playback Volume':2:6,6
++8:'Voice Playback Volume':2:7,7
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:5
++12:'Mono Sidetone Playback Volume':1:5
++13:'Mono Voice Playback Volume':1:4
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:8
++18:'Treble Volume':1:8
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:0,0
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:48,48
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:1,1
++25:'Capture Filter Select':1:2
++26:'Capture Filter Cut-off':1:1
++27:'Capture Filter Switch':1:1
++28:'ALC Capture Target Volume':1:4
++29:'ALC Capture Max Volume':1:5
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:4
++33:'ALC Capture Decay Time':1:8
++34:'ALC Capture Attack Time':1:2
++35:'ALC Capture NG Threshold':1:7
++36:'ALC Capture NG Type':1:0
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:8
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:3
++49:'Mic1 Capture Volume':1:3
++50:'DAI Mode':1:0
++51:'ADC Data Select':1:1
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:1
++56:'Line Mono Mux':1:1
++57:'Line Right Mux':1:1
++58:'Line Left Mux':1:1
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:0
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:1
++63:'Mic Sidetone Mux':1:0
++64:'Capture Right Mux':1:2
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:1
++67:'Capture Left Mixer':1:1
++68:'Playback Mixer Voice Capture Sw':1:1
++69:'Playback Mixer Left Capture Swi':1:1
++70:'Playback Mixer Right Capture Sw':1:1
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:1
++77:'Mono Mixer Sidetone Playback Sw':1:0
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:0
++82:'Right Mixer Bypass Playback Swi':1:0
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:0
++86:'Left Mixer Bypass Playback Swit':1:0
++87:'DAPM Stereo Out Switch':1:0
++88:'DAPM GSM Line Out Switch':1:1
++89:'DAPM GSM Line In Switch':1:1
++90:'DAPM Headset Mic Switch':1:0
++91:'DAPM Handset Mic Switch':1:0
++92:'DAPM Handset Spk Switch':1:1
++93:'Amp State Switch':1:0
++94:'Amp Spk Switch':1:0
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmhandset b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmhandset
+new file mode 100644
+index 0000000..5c3b8b4
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmhandset
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:0,0
++2:'ADC Capture Volume':2:0,0
++3:'Headphone Playback Volume':2:0,0
++4:'Speaker Playback Volume':2:127,127
++5:'Mono Playback Volume':1:110
++6:'Bypass Playback Volume':2:7,7
++7:'Sidetone Playback Volume':2:0,0
++8:'Voice Playback Volume':2:0,0
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:0
++12:'Mono Sidetone Playback Volume':1:7
++13:'Mono Voice Playback Volume':1:0
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:0
++18:'Treble Volume':1:0
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:0,0
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:0,0
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:1,1
++25:'Capture Filter Select':1:0
++26:'Capture Filter Cut-off':1:0
++27:'Capture Filter Switch':1:0
++28:'ALC Capture Target Volume':1:0
++29:'ALC Capture Max Volume':1:0
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:0
++33:'ALC Capture Decay Time':1:0
++34:'ALC Capture Attack Time':1:0
++35:'ALC Capture NG Threshold':1:0
++36:'ALC Capture NG Type':1:1
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:0
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:3
++49:'Mic1 Capture Volume':1:0
++50:'DAI Mode':1:0
++51:'ADC Data Select':1:0
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:0
++56:'Line Mono Mux':1:0
++57:'Line Right Mux':1:1
++58:'Line Left Mux':1:1
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:1
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:0
++63:'Mic Sidetone Mux':1:2
++64:'Capture Right Mux':1:0
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:0
++67:'Capture Left Mixer':1:0
++68:'Playback Mixer Voice Capture Sw':1:0
++69:'Playback Mixer Left Capture Swi':1:0
++70:'Playback Mixer Right Capture Sw':1:0
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:0
++77:'Mono Mixer Sidetone Playback Sw':1:1
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:0
++82:'Right Mixer Bypass Playback Swi':1:1
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:0
++86:'Left Mixer Bypass Playback Swit':1:1
++87:'DAPM Stereo Out Switch':1:0
++88:'DAPM GSM Line Out Switch':1:1
++89:'DAPM GSM Line In Switch':1:1
++90:'DAPM Headset Mic Switch':1:1
++91:'DAPM Handset Mic Switch':1:1
++92:'DAPM Handset Spk Switch':1:1
++93:'Amp State Switch':1:0
++94:'Amp Spk Switch':1:0
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmheadset b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmheadset
+new file mode 100644
+index 0000000..a5875a8
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmheadset
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:0,0
++2:'ADC Capture Volume':2:0,0
++3:'Headphone Playback Volume':2:96,96
++4:'Speaker Playback Volume':2:0,0
++5:'Mono Playback Volume':1:103
++6:'Bypass Playback Volume':2:7,7
++7:'Sidetone Playback Volume':2:0,0
++8:'Voice Playback Volume':2:0,0
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:0
++12:'Mono Sidetone Playback Volume':1:5
++13:'Mono Voice Playback Volume':1:0
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:0
++18:'Treble Volume':1:0
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:0,0
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:0,0
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:1,1
++25:'Capture Filter Select':1:0
++26:'Capture Filter Cut-off':1:0
++27:'Capture Filter Switch':1:0
++28:'ALC Capture Target Volume':1:0
++29:'ALC Capture Max Volume':1:0
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:0
++33:'ALC Capture Decay Time':1:0
++34:'ALC Capture Attack Time':1:0
++35:'ALC Capture NG Threshold':1:0
++36:'ALC Capture NG Type':1:1
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:0
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:0
++49:'Mic1 Capture Volume':1:0
++50:'DAI Mode':1:0
++51:'ADC Data Select':1:0
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:0
++56:'Line Mono Mux':1:0
++57:'Line Right Mux':1:1
++58:'Line Left Mux':1:1
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:1
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:0
++63:'Mic Sidetone Mux':1:1
++64:'Capture Right Mux':1:0
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:0
++67:'Capture Left Mixer':1:0
++68:'Playback Mixer Voice Capture Sw':1:0
++69:'Playback Mixer Left Capture Swi':1:0
++70:'Playback Mixer Right Capture Sw':1:0
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:0
++77:'Mono Mixer Sidetone Playback Sw':1:1
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:0
++82:'Right Mixer Bypass Playback Swi':1:1
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:0
++86:'Left Mixer Bypass Playback Swit':1:1
++87:'DAPM Stereo Out Switch':1:1
++88:'DAPM GSM Line Out Switch':1:1
++89:'DAPM GSM Line In Switch':1:1
++90:'DAPM Headset Mic Switch':1:1
++91:'DAPM Handset Mic Switch':1:1
++92:'DAPM Handset Spk Switch':1:0
++93:'Amp State Switch':1:1
++94:'Amp Spk Switch':1:0
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmspeaker b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmspeaker
+new file mode 100644
+index 0000000..36c3f8f
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/gsmspeaker
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:0,0
++2:'ADC Capture Volume':2:0,0
++3:'Headphone Playback Volume':2:127,127
++4:'Speaker Playback Volume':2:0,0
++5:'Mono Playback Volume':1:103
++6:'Bypass Playback Volume':2:7,7
++7:'Sidetone Playback Volume':2:0,0
++8:'Voice Playback Volume':2:0,0
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:0
++12:'Mono Sidetone Playback Volume':1:6
++13:'Mono Voice Playback Volume':1:0
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:0
++18:'Treble Volume':1:0
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:0,0
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:0,0
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:1,1
++25:'Capture Filter Select':1:0
++26:'Capture Filter Cut-off':1:0
++27:'Capture Filter Switch':1:0
++28:'ALC Capture Target Volume':1:0
++29:'ALC Capture Max Volume':1:0
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:0
++33:'ALC Capture Decay Time':1:0
++34:'ALC Capture Attack Time':1:0
++35:'ALC Capture NG Threshold':1:0
++36:'ALC Capture NG Type':1:1
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:0
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:0
++49:'Mic1 Capture Volume':1:0
++50:'DAI Mode':1:0
++51:'ADC Data Select':1:0
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:0
++56:'Line Mono Mux':1:0
++57:'Line Right Mux':1:1
++58:'Line Left Mux':1:1
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:1
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:0
++63:'Mic Sidetone Mux':1:2
++64:'Capture Right Mux':1:0
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:0
++67:'Capture Left Mixer':1:0
++68:'Playback Mixer Voice Capture Sw':1:0
++69:'Playback Mixer Left Capture Swi':1:0
++70:'Playback Mixer Right Capture Sw':1:0
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:0
++77:'Mono Mixer Sidetone Playback Sw':1:1
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:0
++82:'Right Mixer Bypass Playback Swi':1:1
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:0
++86:'Left Mixer Bypass Playback Swit':1:1
++87:'DAPM Stereo Out Switch':1:1
++88:'DAPM GSM Line Out Switch':1:1
++89:'DAPM GSM Line In Switch':1:1
++90:'DAPM Headset Mic Switch':1:1
++91:'DAPM Handset Mic Switch':1:1
++92:'DAPM Handset Spk Switch':1:1
++93:'Amp State Switch':1:1
++94:'Amp Spk Switch':1:1
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/headset b/recipes/freesmartphone/fso-alsa-data/archos43/default/headset
+new file mode 100644
+index 0000000..ddd1e44
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/headset
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:235,235
++2:'ADC Capture Volume':2:195,195
++3:'Headphone Playback Volume':2:127,127
++4:'Speaker Playback Volume':2:0,0
++5:'Mono Playback Volume':1:121
++6:'Bypass Playback Volume':2:2,2
++7:'Sidetone Playback Volume':2:2,2
++8:'Voice Playback Volume':2:2,2
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:2
++12:'Mono Sidetone Playback Volume':1:2
++13:'Mono Voice Playback Volume':1:2
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:0
++18:'Treble Volume':1:0
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:2,2
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:23,23
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:0,0
++25:'Capture Filter Select':1:0
++26:'Capture Filter Cut-off':1:0
++27:'Capture Filter Switch':1:1
++28:'ALC Capture Target Volume':1:3
++29:'ALC Capture Max Volume':1:7
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:15
++33:'ALC Capture Decay Time':1:12
++34:'ALC Capture Attack Time':1:2
++35:'ALC Capture NG Threshold':1:0
++36:'ALC Capture NG Type':1:0
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:0
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:0
++49:'Mic1 Capture Volume':1:0
++50:'DAI Mode':1:0
++51:'ADC Data Select':1:0
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:0
++56:'Line Mono Mux':1:0
++57:'Line Right Mux':1:1
++58:'Line Left Mux':1:1
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:0
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:0
++63:'Mic Sidetone Mux':1:0
++64:'Capture Right Mux':1:0
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:0
++67:'Capture Left Mixer':1:0
++68:'Playback Mixer Voice Capture Sw':1:0
++69:'Playback Mixer Left Capture Swi':1:0
++70:'Playback Mixer Right Capture Sw':1:0
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:0
++77:'Mono Mixer Sidetone Playback Sw':1:0
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:1
++82:'Right Mixer Bypass Playback Swi':1:0
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:1
++86:'Left Mixer Bypass Playback Swit':1:0
++87:'DAPM Stereo Out Switch':1:1
++88:'DAPM GSM Line Out Switch':1:0
++89:'DAPM GSM Line In Switch':1:0
++90:'DAPM Headset Mic Switch':1:0
++91:'DAPM Handset Mic Switch':1:0
++92:'DAPM Handset Spk Switch':1:0
++93:'Amp State Switch':1:1
++94:'Amp Spk Switch':1:0
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/stereoout b/recipes/freesmartphone/fso-alsa-data/archos43/default/stereoout
+new file mode 100644
+index 0000000..2e221b3
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/stereoout
+@@ -0,0 +1,58 @@
++1:'Bass Boost':1:0
++2:'Bass Filter':1:0
++3:'Bass Volume':1:0
++4:'Treble Volume':1:15
++5:'Treble Cut-off':1:0
++6:'3D Switch':1:0
++7:'3D Volume':1:0
++8:'3D Lower Cut-off':1:0
++9:'3D Upper Cut-off':1:0
++10:'3D Mode':1:0
++11:'ALC Capture Target Volume':1:3
++12:'ALC Capture Max Volume':1:7
++13:'ALC Capture Function':1:0
++14:'ALC Capture ZC Switch':1:0
++15:'ALC Capture Hold Time':1:0
++16:'ALC Capture Decay Time':1:3
++17:'ALC Capture Attack Time':1:2
++18:'ALC Capture NG Threshold':1:0
++19:'ALC Capture NG Type':1:0
++20:'ALC Capture NG Switch':1:0
++21:'ZC Timeout Switch':1:0
++22:'Capture Digital Volume':2:195,195
++23:'Capture Volume':2:23,23
++24:'Capture ZC Switch':2:0,0
++25:'Capture Switch':2:0,0
++26:'Playback De-emphasis':1:0
++27:'Capture Polarity':1:0
++28:'Playback 6dB Attenuate':1:1
++29:'Capture 6dB Attenuate':1:0
++30:'PCM Volume':2:230,230
++31:'Left Mixer Left Bypass Volume':1:2
++32:'Left Mixer Right Bypass Volume':1:2
++33:'Right Mixer Left Bypass Volume':1:2
++34:'Right Mixer Right Bypass Volume':1:2
++35:'Output 1 Playback ZC Switch':2:0,0
++36:'Output 1 Playback Volume':2:121,121
++37:'Output 2 Playback ZC Switch':2:0,0
++38:'Output 2 Playback Volume':2:121,121
++39:'Speaker Function Playback Switch':1:1
++40:'Receiver Function Playback Switch':1:0
++41:'Headphone Function Playback Switch':1:0
++42:'Mic Function Capture Switch':1:0
++43:'Right Mixer Left Playback Switch':1:0
++44:'Right Mixer Left Bypass Switch':1:0
++45:'Right Mixer Playback Switch':1:1
++46:'Right Mixer Right Bypass Switch':1:0
++47:'Left Mixer Playback Switch':1:1
++48:'Left Mixer Left Bypass Switch':1:0
++49:'Left Mixer Right Playback Switch':1:0
++50:'Left Mixer Right Bypass Switch':1:0
++51:'Right Line Mux':1:0
++52:'Left Line Mux':1:0
++53:'Right PGA Mux':1:0
++54:'Left PGA Mux':1:0
++55:'Right ADC Mux':1:0
++56:'Left ADC Mux':1:0
++57:'Differential Mux':1:0
++58:'NONAME':0:
+diff --git a/recipes/freesmartphone/fso-alsa-data/archos43/default/voiphandset b/recipes/freesmartphone/fso-alsa-data/archos43/default/voiphandset
+new file mode 100644
+index 0000000..3ca0f86
+--- /dev/null
++++ b/recipes/freesmartphone/fso-alsa-data/archos43/default/voiphandset
+@@ -0,0 +1,94 @@
++1:'PCM Volume':2:235,235
++2:'ADC Capture Volume':2:195,195
++3:'Headphone Playback Volume':2:127,127
++4:'Speaker Playback Volume':2:0,0
++5:'Mono Playback Volume':1:121
++6:'Bypass Playback Volume':2:2,2
++7:'Sidetone Playback Volume':2:2,2
++8:'Voice Playback Volume':2:2,2
++9:'Headphone Playback ZC Switch':2:0,0
++10:'Speaker Playback ZC Switch':2:0,0
++11:'Mono Bypass Playback Volume':1:2
++12:'Mono Sidetone Playback Volume':1:2
++13:'Mono Voice Playback Volume':1:2
++14:'Mono Playback ZC Switch':1:0
++15:'Bass Boost':1:0
++16:'Bass Filter':1:0
++17:'Bass Volume':1:0
++18:'Treble Volume':1:0
++19:'Treble Cut-off':1:0
++20:'Sidetone Capture Volume':2:2,2
++21:'Voice Sidetone Capture Volume':1:2
++22:'Capture Volume':2:47,47
++23:'Capture ZC Switch':2:0,0
++24:'Capture Switch':2:1,1
++25:'Capture Filter Select':1:0
++26:'Capture Filter Cut-off':1:0
++27:'Capture Filter Switch':1:1
++28:'ALC Capture Target Volume':1:3
++29:'ALC Capture Max Volume':1:7
++30:'ALC Capture Function':1:0
++31:'ALC Capture ZC Switch':1:0
++32:'ALC Capture Hold Time':1:15
++33:'ALC Capture Decay Time':1:12
++34:'ALC Capture Attack Time':1:2
++35:'ALC Capture NG Threshold':1:0
++36:'ALC Capture NG Type':1:0
++37:'ALC Capture NG Switch':1:0
++38:'3D Function':1:0
++39:'3D Upper Cut-off':1:0
++40:'3D Lower Cut-off':1:0
++41:'3D Volume':1:0
++42:'3D Switch':1:0
++43:'Capture 6dB Attenuate':1:0
++44:'Playback 6dB Attenuate':1:0
++45:'De-emphasis':1:0
++46:'Playback Mono Mix':1:0
++47:'Playback Phase':1:0
++48:'Mic2 Capture Volume':1:2
++49:'Mic1 Capture Volume':1:0
++50:'DAI Mode':1:2
++51:'ADC Data Select':1:0
++52:'ROUT2 Phase':1:1
++53:'Mic Selection Mux':1:0
++54:'Rx Mixer':1:0
++55:'Line Mixer':1:0
++56:'Line Mono Mux':1:0
++57:'Line Right Mux':1:1
++58:'Line Left Mux':1:1
++59:'ALC Mixer Line Capture Switch':1:0
++60:'ALC Mixer Mic2 Capture Switch':1:0
++61:'ALC Mixer Mic1 Capture Switch':1:0
++62:'ALC Mixer Rx Capture Switch':1:0
++63:'Mic Sidetone Mux':1:0
++64:'Capture Right Mux':1:0
++65:'Capture Left Mux':1:0
++66:'Capture Right Mixer':1:2
++67:'Capture Left Mixer':1:2
++68:'Playback Mixer Voice Capture Sw':1:0
++69:'Playback Mixer Left Capture Swi':1:0
++70:'Playback Mixer Right Capture Sw':1:0
++71:'Out4 Mux':1:0
++72:'Out3 Mux':1:0
++73:'Mono 2 Mux':1:0
++74:'Mono Mixer Left Playback Switch':1:0
++75:'Mono Mixer Right Playback Switc':1:0
++76:'Mono Mixer Voice Playback Switc':1:0
++77:'Mono Mixer Sidetone Playback Sw':1:0
++78:'Mono Mixer Bypass Playback Swit':1:0
++79:'Right Mixer Voice Playback Swit':1:0
++80:'Right Mixer Sidetone Playback S':1:0
++81:'Right Mixer Right Playback Swit':1:1
++82:'Right Mixer Bypass Playback Swi':1:0
++83:'Left Mixer Voice Playback Switc':1:0
++84:'Left Mixer Sidetone Playback Sw':1:0
++85:'Left Mixer Left Playback Switch':1:1
++86:'Left Mixer Bypass Playback Swit':1:0
++87:'DAPM Stereo Out Switch':1:0
++88:'DAPM GSM Line Out Switch':1:0
++89:'DAPM GSM Line In Switch':1:0
++90:'DAPM Headset Mic Switch':1:0
++91:'DAPM Handset Mic Switch':1:1
++92:'DAPM Handset Spk Switch':1:1
++93:'Amp State Switch':1:1
++94:'Amp Spk Switch':1:1
+diff --git a/recipes/images/shr-image.inc b/recipes/images/shr-image.inc
+index b453966..d778c95 100644
+--- a/recipes/images/shr-image.inc
++++ b/recipes/images/shr-image.inc
+@@ -9,6 +9,8 @@ DEPENDS += "task-shr-minimal"
+ IMAGE_LOGIN_MANAGER = "shadow"
+ IMAGE_DEV_MANAGER_om-gta01 = ""
+ IMAGE_DEV_MANAGER_om-gta02 = ""
++# ?
++#IMAGE_DEV_MANAGER_archos43 = ""
+ 
+ RDEPENDS_${PN} += "\
+   task-shr-minimal-base \
+diff --git a/recipes/linux/linux_2.6.28.bb b/recipes/linux/linux_2.6.28.bb
+index 04cd548..0a10163 100644
+--- a/recipes/linux/linux_2.6.28.bb
++++ b/recipes/linux/linux_2.6.28.bb
+@@ -5,6 +5,7 @@ PR = "r15"
+ # Mark archs/machines that this kernel supports
+ DEFAULT_PREFERENCE = "-1"
+ 
++DEFAULT_PREFERENCE_archos43 = "1"
+ DEFAULT_PREFERENCE_at91sam9263ek = "28"
+ DEFAULT_PREFERENCE_ronetix-pm9263 = "29"
+ DEFAULT_PREFERENCE_stb225 = "28"
+diff --git a/recipes/netbase/netbase/archos43/interfaces b/recipes/netbase/netbase/archos43/interfaces
+new file mode 100644
+index 0000000..97649c3
+--- /dev/null
++++ b/recipes/netbase/netbase/archos43/interfaces
+@@ -0,0 +1,64 @@
++# /etc/network/interfaces -- configuration file for ifup(8), ifdown(8)
++ 
++# The loopback interface
++auto lo
++iface lo inet loopback
++
++
++# Wireless interfaces
++#
++# Example of an unencrypted (no WEP or WPA) wireless connection
++# that connects to any available access point:
++#
++iface wlan0 inet dhcp
++	wireless_mode managed
++	wireless_essid any
++#
++#
++# Same as above but locked to a specific access point:
++#
++#iface wlan0 inet dhcp  
++#	wireless_mode managed
++#	wireless-essid some-essid
++#
++# A WEP encrypted connection locked to a specific access point:
++#
++#iface wlan0 inet dhcp  
++#	wireless-essid some-essid
++#	wireless-key s:My-PlainText-Password
++#	wireless-mode managed                  
++#
++# A WPA1 or WPA2 encrypted connection locked to a specific access point.
++# This is the best option for non-roaming, single-network usage.
++# Note that your card may require a firmware update to use WPA. 
++# Some distributions install a temporary volatile firmware update on ifup.
++#
++#iface wlan0 inet dhcp                                                   
++#	wpa-essid some-essid                                          
++#	wpa-psk My-PlainText-Password                                              
++#
++# A WPA1 or WPA2 encrypted connection using an external configuration file
++# for wpa-supplicant. This is the way to go if you need to configure multiple
++# networks with different keys and / or WPA settings and roaming support.
++#
++# iface wlan0 inet dhcp
++#    wpa-conf /etc/wpa_supplicant.conf
++#    wpa-driver hostap
++
++
++
++# Ethernet/RNDIS gadget (g_ether)
++# ... or on host side, usbnet and random hwaddr
++auto usb0
++iface usb0 inet static
++	address 192.168.0.202
++	netmask 255.255.255.0
++	network 192.168.0.0
++	up route add default gw 192.168.0.200 metric 8
++	up echo nameserver 208.67.222.222 > /etc/resolv.conf
++	up echo nameserver 208.67.220.220 >> /etc/resolv.conf
++	down route del default gw 192.168.0.200 metric 8
++
++# Bluetooth networking
++iface bnep0 inet dhcp
++
+diff --git a/recipes/shr/initscripts-shr/bootmisc.sh b/recipes/shr/initscripts-shr/bootmisc.sh
+index 4511e12..5fc3144 100644
+--- a/recipes/shr/initscripts-shr/bootmisc.sh
++++ b/recipes/shr/initscripts-shr/bootmisc.sh
+@@ -44,4 +44,26 @@ then
+ 	fi
+ fi
+ 
++
++echo 9 > /proc/sys/kernel/printk
++
++# Gen7 only.
++[ -e /dev/atmg ] && /usr/sbin/ping_atmega.sh &
++
++while true
++do
++	modprobe btwilink
++	sleep 20	# Wait while it miserably fails to install "line disc".
++	hciattach -n /dev/ttyS0 texas 3000000
++	rmmod btwilink
++done &
++
++# Workaround. Modules can't be loaded without depmod.
++if [ -e /lib/modules/2.6.28.10 ]
++then
++	rm -rf /lib/modules/2.6.28.10
++	depmod
++fi
++
++
+ : exit 0
+diff --git a/recipes/usb-gadget-mode/files/usb-gadget.init b/recipes/usb-gadget-mode/files/usb-gadget.init
+index 7bf456b..81fbbc1 100755
+--- a/recipes/usb-gadget-mode/files/usb-gadget.init
++++ b/recipes/usb-gadget-mode/files/usb-gadget.init
+@@ -11,6 +11,11 @@
+ # 20070606 - v0.0.1	- Initial release
+ 
+ case "$1" in 
+-start)		usb-gadget ;;
++start)
++	usb-gadget
++	# Workaround. 'auto usb0' doesn't help.
++	ifdown usb0
++	ifup usb0
++	;;
+ esac
+ 
+diff --git a/recipes/xinput-calibrator/pointercal-xinput/archos43/pointercal.xinput b/recipes/xinput-calibrator/pointercal-xinput/archos43/pointercal.xinput
+new file mode 100644
+index 0000000..721bea8
+--- /dev/null
++++ b/recipes/xinput-calibrator/pointercal-xinput/archos43/pointercal.xinput
+@@ -0,0 +1,2 @@
++xinput set-int-prop "ADS784x Touchscreen" "Evdev Axis Calibration" 32 245 3882 245 3885
++
+diff --git a/recipes/xorg-xserver/xserver-xorg-conf/archos43/xorg.conf b/recipes/xorg-xserver/xserver-xorg-conf/archos43/xorg.conf
+new file mode 100644
+index 0000000..befe33a
+--- /dev/null
++++ b/recipes/xorg-xserver/xserver-xorg-conf/archos43/xorg.conf
+@@ -0,0 +1,13 @@
++Section "InputClass"
++        Identifier      "inverts"
++        MatchProduct    "UNITEC USB Touch (Win7)"
++        Option          "InvertX" "on"
++        Option          "InvertY" "on"
++EndSection
++
++Section "InputClass"
++    Identifier     "disable accelerometer"
++    MatchProduct   "Accelerometer"
++    Option         "Ignore" "on"
++EndSection
++
+diff --git a/recipes/xserver-common/files/Xserver.n900.patch b/recipes/xserver-common/files/Xserver.n900.patch
+index 4d36f5f..9f1a614 100644
+--- a/recipes/xserver-common/files/Xserver.n900.patch
++++ b/recipes/xserver-common/files/Xserver.n900.patch
+@@ -5,7 +5,7 @@ diff -uri xserver-common-1.33.orig/X11/xserver-common xserver-common-1.33/X11/xs
+          "nokia_n800" | "nokia_rx-44" | "nokia_n770")
+              ARGS="$ARGS -screen ${SCREEN_SIZE}"
+              DPI="225" ;;
+-+        "nokia_rx-51_board" )                                     
+++        "archos_a43_board" )                                     
+ +            DPI="267"                                    
+ +            if [ "$XSERVER" != "Xorg" ] ; then                    
+ +                ARGS="$ARGS -screen ${SCREEN_SIZE}"               
